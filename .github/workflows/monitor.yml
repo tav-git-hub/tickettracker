@@ -26,7 +26,9 @@ jobs:
 
       - name: Commit state if changed
         run: |
-          if ! git diff --quiet -- poller/state.json; then
+          # git diff --quiet misses a brand-new (never-tracked) file, so use
+          # git status --porcelain to catch both modifications and new files.
+          if [ -n "$(git status --porcelain -- poller/state.json)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add poller/state.json

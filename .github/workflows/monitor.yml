@@ -1,0 +1,37 @@
+name: Atleta resale monitor
+
+on:
+  schedule:
+    # Poll interval. GitHub Actions cron cannot reliably run more often
+    # than ~5 minutes, so this is the practical floor (see README).
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atleta-resale-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run check
+        run: bash poller/check.sh
+
+      - name: Commit state if changed
+        run: |
+          if ! git diff --quiet -- poller/state.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add poller/state.json
+            git commit -m "Update poller state [skip ci]"
+            git push
+          else
+            echo "No state change, nothing to commit."
+          fi

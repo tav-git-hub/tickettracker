@@ -1,72 +1,64 @@
 # tickettracker — Atleta resale monitor
 
-Doel: waarschuwing (via ntfy push) zodra er resale-startbewijzen
-beschikbaar komen op
-`https://atleta.cc/e/qPULqpd5Gtfm/resale`.
+Waarschuwt via ntfy push zodra er resale-startbewijzen beschikbaar komen op
+`https://atleta.cc/e/qPULqpd5Gtfm/resale`. Draait volledig automatisch op
+GitHub Actions — geen laptop, geen handmatige stappen nodig.
 
-Vastgelegde keuzes:
 - Notificatiekanaal: ntfy push, topic `7HL_2026_tickets`, server `https://ntfy.sh`
-- Geen desktop-acties (geen browser openen, geen geluid)
-- Poller draait op je laptop, niet in een cloud-/sandbox-omgeving
+- Poll-interval: elke 5 minuten (`.github/workflows/monitor.yml`, cron
+  `*/5 * * * *`) — de praktische ondergrens van GitHub Actions' scheduler;
+  minder frequent kan niet betrouwbaar.
 
-## Bekende blocker (bevestigd, twee keer)
+## Hoe het werkt
 
-Elke sandboxed/cloud Claude-omgeving die dit is geprobeerd (inclusief deze
-sessie) krijgt een `403` op de proxy-CONNECT-tunnel zodra er verbinding
-wordt gemaakt met `atleta.cc` — zowel met `curl` als met headless
-Playwright/Chromium. Dit is een netwerkbeleid-blokkade op omgevingsniveau,
-geen gedrag van Atleta. Daarom **moeten stap 1 en 2 hieronder lokaal op je
-laptop draaien**, niet in een cloud-sessie.
+`poller/check.sh` doet één GraphQL-call naar `https://atleta.cc/api/graphql`
+(operation `GetRegistrationsForSale`) en leest
+`data.event.registrations_for_sale_count`. Geen browser/Playwright nodig:
+uit onderzoek bleek dat dit endpoint helemaal geen geldige sessie of
+CSRF-token vereist (zelfs verzonnen headers werden geaccepteerd) en geen
+sessiecookie gebruikt — dus een simpele `curl`-achtige aanroep volstaat.
 
-## Stap 1 — XHR-call vastleggen (lokaal draaien)
+- Wordt de teller `0` → `>0`: ntfy priority 5, met Click-link naar de
+  resale-pagina.
+- Wordt de teller `>0` → `0`: ntfy priority 3.
+- Eén keer per dag: heartbeat op priority 1, zodat je weet dat de monitor
+  nog draait.
+- Bij HTTP 429/403: exponentiële backoff (5 → 10 → 20 → … tot max 240 min)
+  plus een eenmalige ntfy-waarschuwing dat backoff actief is.
+- State (`poller/state.json`: laatste bekende beschikbaarheid, backoff,
+  laatste heartbeat-datum) wordt door de workflow zelf teruggecommit naar
+  de repo, dus overleeft elke run (GitHub Actions runners zijn stateless).
 
-```bash
-cd research
-pip install playwright requests
-playwright install chromium
-python3 capture_xhr.py
+De repo was leeg toen dit project startte, dus GitHub heeft deze branch
+automatisch als default branch ingesteld — de cron-schedule staat daardoor
+al live, zonder aparte merge-stap.
+
+## Kosten/limieten
+
+Repo is privé. Elke run kost ~5-10s (geen Playwright/browser meer nodig),
+dus bij 5 min interval (~288 runs/dag) blijft het ruim binnen de gratis
+GitHub Actions-maandquota. Het endpoint zelf rapporteerde een limiet van
+120 requests per venster — bij 1 request per 5 minuten wordt dat nooit
+benaderd.
+
+## Onderzoekstooling (research/)
+
+Bewaard voor referentie/toekomstig hergebruik, niet meer nodig voor
+normale werking:
+
+- `discover_and_validate_ci.py`, `check_synthetic_headers.py`,
+  `discover_ci.py`: headless Playwright/requests-scripts die op een
+  GitHub Actions-runner de endpoint-ontdekking en -validatie deden (deze
+  cloud-sessie kon `atleta.cc` zelf niet bereiken door een netwerkbeleid-
+  blokkade op de proxy).
+- `capture_xhr.py`, `validate_endpoint.py`: interactieve varianten voor
+  lokaal gebruik op een laptop, mochten de headless CI-scripts ooit
+  opnieuw nodig zijn (bv. als Atleta de endpoint-vorm wijzigt).
+
+## Handmatig testen
+
+```
+gh workflow run monitor.yml   # of via de Actions-tab / workflow_dispatch
 ```
 
-Er opent een Chromium-venster op de resale-pagina. Klik daar handmatig op
-de refresh-/beschikbaarheid-knop (eventueel een paar keer), en druk daarna
-in de terminal op Enter. Het script schrijft alle XHR/fetch-calls
-(volledige URL, method, headers, request body, response body) naar
-`research/capture.json`.
-
-Ken je de exacte CSS-selector van de knop al? Dan kan het ook zonder
-handmatig klikken:
-
-```bash
-python3 capture_xhr.py --auto-click "text=Refresh" --clicks 2
-```
-
-## Stap 2 — reproduceerbaarheid + rate-limiting testen (lokaal draaien)
-
-```bash
-python3 validate_endpoint.py capture.json
-```
-
-Dit script:
-1. Herhaalt de vastgelegde call met `requests`, zonder sessiecookie/
-   authorization-header, en laat zien of de response nog geldig is.
-2. Vuurt dezelfde call 5x snel achter elkaar af en rapporteert
-   statuscodes, timing en eventuele `Retry-After`/429/403.
-
-Resultaat komt ook in `research/validation_report.json`.
-
-## Vervolg
-
-- **Werkt de call reproduceerbaar zonder cookie, geen agressieve rate
-  limiting?** Deel het resultaat (of de inhoud van `capture.json` /
-  `validation_report.json`) — dan bouw ik de Python-poller (stap 3a) af:
-  interval als constante (start 60s), vergelijking met vorige poll,
-  ntfy-notificaties (priority 5 bij beschikbaar, priority 3 bij niet meer
-  beschikbaar, dagelijkse heartbeat priority 1), exponentiële backoff +
-  ntfy-waarschuwing bij 429/403, en een duidelijke User-Agent.
-- **Vereist de call een sessiecookie/CSRF-token, of blokkeert hij zonder
-  browsercontext?** Open de pagina in je browser, inspecteer met DevTools
-  het element dat de beschikbaarheid toont, en geef me de CSS-selector +
-  exacte tekst — dan zet ik dat om in een changedetection.io-configuratie
-  (stap 3b) in plaats van een custom poller.
-
-Er wordt bewust nog geen poller gebouwd totdat stap 2 is bevestigd.
+Dit voert direct één poll-cyclus uit, los van de cron-schedule.

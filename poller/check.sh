@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Single poll of the Atleta resale availability endpoint, run on a
-# GitHub Actions cron schedule (see .github/workflows/monitor.yml).
-# Compares against poller/state.json, notifies via ntfy on change,
-# backs off on 429/403, and sends a daily heartbeat.
+# Single poll of the Atleta resale availability endpoint. Invoked
+# repeatedly by poller/loop.sh inside a long-running GitHub Actions job
+# (see .github/workflows/monitor.yml). Compares against poller/state.json,
+# notifies via ntfy on change, backs off on 429/403, and sends a daily
+# heartbeat. Requires NTFY_TOPIC in the environment (repo secret).
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 NTFY_SERVER="https://ntfy.sh"
-NTFY_TOPIC="7HL_2026_tickets"
+NTFY_TOPIC="${NTFY_TOPIC:?NTFY_TOPIC environment variable not set (repo secret)}"
 RESALE_URL="https://atleta.cc/e/qPULqpd5Gtfm/resale"
 GRAPHQL_URL="https://atleta.cc/api/graphql"
 BASE_BACKOFF_MINUTES=5

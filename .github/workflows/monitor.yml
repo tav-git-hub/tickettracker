@@ -2,10 +2,16 @@ name: Atleta resale monitor
 
 on:
   schedule:
-    # Poll interval. GitHub Actions cron cannot reliably run more often
-    # than ~5 minutes, so this is the practical floor (see README).
-    - cron: "*/5 * * * *"
-  workflow_dispatch: {}
+    # Restart cadence, not the poll interval. Each run polls continuously
+    # every 30s internally (poller/loop.sh) and exits ~5 min before this
+    # fires again, so coverage is continuous with a negligible restart gap.
+    - cron: "0 */5 * * *"
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: "Loop duration for this run (seconds). Use a small value for a quick manual test."
+        required: false
+        default: "17100"
 
 permissions:
   contents: write
@@ -15,25 +21,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  check:
+  loop:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 295
+    env:
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      LOOP_BUDGET_SECONDS: ${{ github.event.inputs.duration_seconds || '17100' }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run check
-        run: bash poller/check.sh
-
-      - name: Commit state if changed
-        run: |
-          # git diff --quiet misses a brand-new (never-tracked) file, so use
-          # git status --porcelain to catch both modifications and new files.
-          if [ -n "$(git status --porcelain -- poller/state.json)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add poller/state.json
-            git commit -m "Update poller state [skip ci]"
-            git push
-          else
-            echo "No state change, nothing to commit."
-          fi
+      - name: Poll continuously
+        run: bash poller/loop.sh

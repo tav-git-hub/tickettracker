@@ -17,10 +17,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Playwright
+      - name: Install dependencies
         run: |
-          pip install playwright
+          pip install playwright requests
           playwright install --with-deps chromium
 
-      - name: Run discovery
-        run: python3 research/discover_ci.py
+      - name: Run discovery + validation
+        run: python3 research/discover_and_validate_ci.py

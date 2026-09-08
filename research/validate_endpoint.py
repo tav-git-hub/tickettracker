@@ -32,7 +32,7 @@ except ImportError:
     print("Missing dependency. Run: pip install requests")
     sys.exit(1)
 
-STRIP_HEADER_PREFIXES = ("cookie", "authorization", "x-csrf", "x-xsrf")
+STRIP_HEADER_PREFIXES = ("cookie", "authorization")
 # Headers that are connection/browser-internal and shouldn't be replayed as-is
 DROP_HEADERS = {
     "cookie",

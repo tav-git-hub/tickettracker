@@ -30,5 +30,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Guard against burning private-repo Actions minutes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          is_private=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}" | jq -r '.private')
+          if [ "$is_private" != "false" ]; then
+            echo "::error::Repo is still private. This job loops for hours, and GitHub Actions bills every run a minimum of 1 rounded-up minute -- at 30s cadence that's ~43,000 min/month, only free on a public repo. Refusing to run the poll loop. See README.md's one-time setup section."
+            exit 1
+          fi
+          echo "Repo is public, proceeding."
+
       - name: Poll continuously
         run: bash poller/loop.sh

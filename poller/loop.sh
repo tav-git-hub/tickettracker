@@ -8,6 +8,12 @@ set -uo pipefail
 
 cd "$(dirname "$0")"
 
+# Fail fast on a config error instead of looping for hours printing the
+# same error every 30s (this is exactly what happened before this guard
+# existed: NTFY_TOPIC was never set, and the loop burned a full ~4h45m of
+# Actions minutes per restart, 571 failed iterations, doing nothing).
+: "${NTFY_TOPIC:?NTFY_TOPIC environment variable not set (add it as a repo secret) -- refusing to start the loop}"
+
 CHECK_INTERVAL_SECONDS=30
 # Stay comfortably under the job's timeout-minutes (leaves room for
 # checkout/setup overhead and a graceful final commit+push).

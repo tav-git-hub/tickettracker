@@ -77,7 +77,7 @@ def notify(title, message, priority, click=""):
 
 
 def dismiss_cookie_banner(page):
-    for text in ("Accept", "Reject"):
+    for text in ("Accept", "Reject", "Accepteren", "Weigeren"):
         try:
             page.locator(f"text={text}").first.click(timeout=2000)
             print(f"Dismissed cookie banner via '{text}'")
@@ -158,8 +158,11 @@ def main():
 
                 before = len(captured)
                 clicked = False
+                # Site renders in Dutch by default ("Vernieuwen"); the English
+                # variant ("Refreshed at HH:MM:SS") was seen once in an
+                # earlier session with a forced English UA/locale. Match both.
                 try:
-                    page.locator(r"text=/Refreshed at \d{2}:\d{2}:\d{2}/").first.click(timeout=5000)
+                    page.locator(r"text=/Vernieuwen|Refreshed at \d{2}:\d{2}:\d{2}/").first.click(timeout=5000)
                     clicked = True
                 except Exception as e:
                     print(f"Click failed: {e}")

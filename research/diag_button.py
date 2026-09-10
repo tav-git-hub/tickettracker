@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""One-off diagnostic: dump all clickable-element texts + raw HTML around
-any occurrence of 'vernieuw' (case-insensitive) on the live resale page."""
+"""One-off diagnostic: figure out why the resale panel (refresh button,
+ticket counts) isn't showing up in a fresh Playwright session."""
 import re
 import sys
 
@@ -8,9 +8,25 @@ from playwright.sync_api import sync_playwright
 
 URL = "https://atleta.cc/e/qPULqpd5Gtfm/resale"
 
+captured = []
+
+
+def on_request_finished(request):
+    if request.resource_type not in ("xhr", "fetch"):
+        return
+    if "GetRegistrationsForSale" not in (request.post_data or ""):
+        return
+    try:
+        resp = request.response()
+        captured.append({"status": resp.status if resp else None})
+    except Exception as e:
+        captured.append({"error": str(e)})
+
+
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page()
+    page.on("requestfinished", on_request_finished)
     page.goto(URL, wait_until="networkidle", timeout=30000)
 
     for text in ("Accept", "Reject", "Accepteren", "Weigeren"):
@@ -21,35 +37,28 @@ with sync_playwright() as p:
         except Exception:
             continue
 
-    page.wait_for_timeout(1500)
+    print(f"[diag] URL after load: {page.url}", file=sys.stderr)
 
-    for tab_text in ("Resale", "Doorverkoop"):
-        try:
-            page.locator(f"text={tab_text}").first.click(timeout=2000)
-            print(f"[diag] clicked tab {tab_text!r}", file=sys.stderr)
-            page.wait_for_timeout(2000)
-            break
-        except Exception as e:
-            print(f"[diag] tab click {tab_text!r} failed: {e}", file=sys.stderr)
+    # Give the SPA extra time beyond networkidle to lazy-render the panel.
+    page.wait_for_timeout(5000)
 
-    print("=== clickable elements ===")
-    candidates = page.locator("button, a, [role=button]")
-    count = candidates.count()
-    for i in range(min(count, 80)):
-        el = candidates.nth(i)
-        try:
-            text = (el.inner_text(timeout=500) or "").strip()
-        except Exception:
-            text = "<err>"
-        if text:
-            print(f"[{i}] {text!r}")
+    print(f"[diag] URL after wait: {page.url}", file=sys.stderr)
+    print(f"[diag] GetRegistrationsForSale calls captured so far: {captured}", file=sys.stderr)
 
-    print("=== raw HTML around 'vernieuw' (case-insensitive) ===")
     html = page.content()
-    for m in re.finditer(r"vernieuw", html, re.IGNORECASE):
-        start = max(0, m.start() - 200)
-        end = min(len(html), m.end() + 200)
-        print(html[start:end])
-        print("---")
+    print(f"=== content length: {len(html)} ===")
+    for kw in ("vernieuw", "ticketdoorverkoop", "beschikbaar", "verkocht", "registrations_for_sale", "resale"):
+        n = len(re.findall(kw, html, re.IGNORECASE))
+        print(f"keyword {kw!r}: {n} occurrences")
+
+    print("=== all visible text nodes (body innerText, first 3000 chars) ===")
+    try:
+        body_text = page.locator("body").inner_text(timeout=3000)
+    except Exception as e:
+        body_text = f"<error: {e}>"
+    print(body_text[:3000])
+
+    print("=== final captured GetRegistrationsForSale calls ===")
+    print(captured)
 
     browser.close()

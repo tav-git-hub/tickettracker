@@ -23,6 +23,15 @@ with sync_playwright() as p:
 
     page.wait_for_timeout(1500)
 
+    for tab_text in ("Resale", "Doorverkoop"):
+        try:
+            page.locator(f"text={tab_text}").first.click(timeout=2000)
+            print(f"[diag] clicked tab {tab_text!r}", file=sys.stderr)
+            page.wait_for_timeout(2000)
+            break
+        except Exception as e:
+            print(f"[diag] tab click {tab_text!r} failed: {e}", file=sys.stderr)
+
     print("=== clickable elements ===")
     candidates = page.locator("button, a, [role=button]")
     count = candidates.count()

@@ -1,11 +1,9 @@
 name: Atleta resale monitor
 
 on:
-  schedule:
-    # Restart cadence, not the poll interval. Each run polls continuously
-    # every 30s internally (poller/loop.sh) and exits ~5 min before this
-    # fires again, so coverage is continuous with a negligible restart gap.
-    - cron: "0 */5 * * *"
+  # Schedule trigger disabled on request (2026-09-11) -- monitor no longer
+  # runs automatically. Re-add a `schedule:` block with a cron expression
+  # to turn it back on; workflow_dispatch still works for a manual run.
   workflow_dispatch:
     inputs:
       duration_seconds:

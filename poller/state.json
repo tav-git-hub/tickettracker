@@ -1,6 +1,6 @@
 {
   "available": false,
-  "backoff_level": 2,
-  "skip_until": 1789106967,
+  "backoff_level": 3,
+  "skip_until": 1789109374,
   "last_heartbeat_date": "2026-09-11"
 }
